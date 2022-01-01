@@ -5,6 +5,9 @@ all:
 	rm -rf  *~ */*~  erl_cra*;
 #	common
 	erlc -I ../../include -o ebin ../../common/src/*.erl;
+#	sd
+	cp ../sd/src/*.app ebin;
+	erlc -I ../../include -o ebin ../sd/src/*.erl;
 #	app
 	cp src/*.app ebin;
 	erlc -I ../../include -I ../controller/include -I ../dbase_infra/include -o ebin src/*.erl;
@@ -14,6 +17,9 @@ start:
 	rm -rf  *~ */*~  erl_cra*;
 #	common
 	erlc -I ../../include -o ebin ../../common/src/*.erl;
+#	sd
+	cp ../sd/src/*.app ebin;
+	erlc -I ../../include -o ebin ../sd/src/*.erl;
 #	app
 	cp src/*.app ebin;
 	erlc -I ../../include -I ../controller/include -I ../dbase_infra/include -o ebin src/*.erl;

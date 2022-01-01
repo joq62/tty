@@ -18,8 +18,7 @@
 -define(SERVER,tty_server).
 %% --------------------------------------------------------------------
 -export([
-	 connect/1,
-	 exit/0,
+	 print/0,
 	 ping/0
 	 
         ]).
@@ -54,12 +53,12 @@ stop()-> gen_server:call(?SERVER, {stop},infinity).
 %% @param: non
 %% @returns:{pong,node,module}|{badrpc,Reason}
 %%
+print()-> 
+    gen_server:cast(?SERVER, {print}).
+
+
 ping()-> 
     gen_server:call(?SERVER, {ping},infinity).
 
-connect(ControllerNode)-> 
-    gen_server:call(?SERVER, {connect,ControllerNode},infinity).
-exit()-> 
-    gen_server:call(?SERVER, {exit},infinity).
 
 %%----------------------------------------------------------------------

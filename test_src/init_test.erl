@@ -80,7 +80,6 @@ start()->
 %% -------------------------------------------------------------------
 first()->
     {ok,ControllerNode}=oam:first(),
-    terminal:start(ControllerNode),
     
     
 

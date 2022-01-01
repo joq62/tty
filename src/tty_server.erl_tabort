@@ -12,7 +12,7 @@
 %% --------------------------------------------------------------------
 % -include("").
 %% --------------------------------------------------------------------
--define(PollInterval,5*1000).
+-define(PollInterval,1*1000).
 
 %% External exports
 
@@ -20,8 +20,7 @@
 
 -export([init/1, handle_call/3,handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
--record(state, {status,
-		latest
+-record(state, {status
 	       }).
 
 %% ====================================================================
@@ -41,9 +40,9 @@
 %%          {stop, Reason}
 %% --------------------------------------------------------------------
 init([]) ->
+    ok=application:start(sd),
     spawn(fun()-> do_poll() end),
-    {ok, #state{status=oam_not_started,
-	       latest=na}
+    {ok, #state{status=oam_not_started}
     }.
 
 %% --------------------------------------------------------------------
@@ -56,6 +55,40 @@ init([]) ->
 %%          {stop, Reason, Reply, State}   | (terminate/2 is called)
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
+handle_call({connect,ControllerNode},_From,State) ->
+    io:format("connect,ControllerNode ~p~n",[{connect,ControllerNode,?MODULE,?FUNCTION_NAME,?LINE}]),
+    Reply=case rpc:call(node(),terminal,start,[ControllerNode],2*5*1000) of
+	      {badrpc,Reason}->
+		  NewState=State,
+		  {badrpc,Reason};
+	      {ok,Pid}->
+		  NewState=State#state{tty_pid=Pid},
+		  ok;
+	      ErrorReason->
+		  NewState=State,
+		  {error,ErrorReason}
+	  end,
+    {reply, Reply, NewState};
+
+handle_call({exit},_From,State) ->
+    io:format("exit ~p~n",[{?MODULE,?FUNCTION_NAME,?LINE}]),
+    Reply=case State#state.tty_pid of
+	      not_a_pid->
+		  NewState=State,
+		  {error,[not_a_pid]};
+	      Pid->
+		  case is_pid(Pid) of
+		      false->
+			  NewState=State,
+			  {error,[not_a_pid,Pid]};
+		      true->
+			  Pid!exit,
+			  NewState=State#state{tty_pid=not_a_pid},
+			  ok
+		  end
+	  end,
+    {reply, Reply, NewState};
+
 handle_call({ping},_From,State) ->
     Reply={pong,node(),?MODULE},
     {reply, Reply, State};
@@ -74,28 +107,7 @@ handle_call(Request, From, State) ->
 %%          {noreply, State, Timeout} |
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
-handle_cast({print}, State) ->
-    NewState=case State#state.status of
-		 oam_not_started->
-		     case rpc:call(node(),terminal,start,[],5*1000) of
-			 {ok,Latest}->
-			     State#state{status=started,latest=Latest};
-			 {error,Reason}->
-			     io:format("~p~n",[{error,Reason,?MODULE,?FUNCTION_NAME,?LINE}]),
-			     State
-		     end;
-		 started->
-		     case rpc:call(node(),terminal,print,[State#state.latest],5*1000) of
-			 {ok,Latest}->
-			     State#state{status=started,latest=Latest};
-			 {Error,Reason}->
-			     io:format("~p~n",[{Error,Reason,?MODULE,?FUNCTION_NAME,?LINE}]),
-			     State
-		     end
-	     end,
-  %  io:format("NewState ~p~n",[{NewState,?MODULE,?FUNCTION_NAME,?LINE}]),
-    spawn(fun()-> do_poll() end),
-    {noreply, NewState};
+
 
 handle_cast(Msg, State) ->
     io:format("unmatched match cast ~p~n",[{Msg,?MODULE,?LINE,time()}]),
@@ -130,7 +142,5 @@ code_change(_OldVsn, State, _Extra) ->
 %% --------------------------------------------------------------------
 %%% Internal functions
 %% --------------------------------------------------------------------
-do_poll()->
-    timer:sleep(?PollInterval),
-    rpc:cast(node(),tty,print,[]).
+
 		  

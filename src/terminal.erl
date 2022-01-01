@@ -12,12 +12,11 @@
 
 -include("controller.hrl").
 -include("logger_infra.hrl").
-%% --------------------------------------------------------------------
-
+%% -------------------------------------------------------------------
 %% External exports
 -export([
-	 start/1,
-	 print/2
+	 start/0,
+	 print/1
 	]). 
 
 
@@ -29,68 +28,92 @@
 %% Description: List of test cases 
 %% Returns: non
 %% --------------------------------------------------------------------
-start(ControllerNode)->
-    Result=case rpc:call(ControllerNode,sd,get,[dbase_infra],5*1000) of
-	       {badrpc,Reason}->
-		   io:format("{error = ~p~n",[{badrpc,Reason,?MODULE,?FUNCTION_NAME,?LINE}]),
-		   timer:sleep(3000),
-		   start(ControllerNode);
-	       []->
-		   io:format("{error = ~p~n",[{error,[],?MODULE,?FUNCTION_NAME,?LINE}]),
-		   timer:sleep(3000),
-		   start(ControllerNode);
-	       [DbaseNode|_]->
-		   case rpc:call(DbaseNode,db_logger,ids,[],3000) of
-		       {badrpc,Reason}->
-			   io:format("{error = ~p~n",[{badrpc,Reason,?MODULE,?FUNCTION_NAME,?LINE}]),
-			   timer:sleep(3000),
-			   start(ControllerNode);
-		       []->
-			   io:format("{No Ids = ~p~n",[{?MODULE,?FUNCTION_NAME,?LINE}]),
-			   timer:sleep(3000),
-			   start(ControllerNode);
-		       Ids->
-			   OldNew=q_sort:sort(Ids),
-			   Latest=lists:last(OldNew),
-			   [{Id,rpc:cast(DbaseNode,db_logger,nice_print,[Id])}||Id<-OldNew],
-			   Pid=spawn(fun()->print(ControllerNode,Latest) end),
-			   {ok,Pid}
-		   end
-	   end,   
+start()->
+    {ok,HostName}=net:gethostname(),
+    OamNode=list_to_atom("oam@"++HostName),
+  %  io:format("HostName,OamNode ~p~n",[{HostName,OamNode,?MODULE,?FUNCTION_NAME,?LINE}]),
+    Result= case net_adm:ping(OamNode) of
+		pang->
+		    io:format("error ~p~n",[{eexists,OamNode,?MODULE,?FUNCTION_NAME,?LINE}]),
+		    {error,[eexists,OamNode]};
+		pong->
+		    case rpc:call(OamNode,cluster,get_controllers,[],5*1000) of
+			{Error,Reason}->
+			    {error,[Error,Reason]};
+			ControllerNodes->
+			    {SdResL,_}=rpc:multicall(ControllerNodes,sd,get,[dbase_infra],5*1000),
+			    case [{Error,Reason}||{Error,Reason}<-lists:append(SdResL)] of
+				[]-> 
+				    DbaseNodes=lists:append(SdResL), % Remove []
+				    {IdsResL,_}=rpc:multicall(DbaseNodes,db_logger,ids,[],5*1000),
+				    case [{Error,Reason}||{Error,Reason}<-lists:append(IdsResL)] of
+					[]-> 
+					    case misc:rm_duplicates(lists:append(IdsResL)) of
+						[]->
+						    {error,[no_ids]}; 
+						Ids->
+					%	    io:format("{Ids = ~p~n",[{Ids,?MODULE,?FUNCTION_NAME,?LINE}]),
+						    OldNew=q_sort:sort(Ids),
+						    Latest=lists:last(OldNew),
+					%	    io:format("{OldNew = ~p~n",[{OldNew,?MODULE,?FUNCTION_NAME,?LINE}]),
+					%	    io:format("{Latest = ~p~n",[{Latest,?MODULE,?FUNCTION_NAME,?LINE}]),
+						    [DbaseNode|_]=DbaseNodes,
+						    [rpc:cast(DbaseNode,db_logger,nice_print,[Id])||Id<-OldNew],
+						    {ok,Latest}
+					    end;
+					Reason ->
+					    {error,[Reason]}
+				    end;
+				Reason ->
+				    {error,[Reason]}
+			    end
+		    end
+	    end,
     Result.
-
-print(ControllerNode,Latest)->
-    NewLatest=case rpc:call(ControllerNode,sd,get,[dbase_infra],5*1000) of
-		  {badrpc,Reason}->
-		      io:format("{error = ~p~n",[{badrpc,Reason,?MODULE,?FUNCTION_NAME,?LINE}]),
-		      Latest;
-		  []->
-		      io:format("{error, = ~p~n",[{error,[],?MODULE,?FUNCTION_NAME,?LINE}]),
-		      Latest;
-		  [DbaseNode|_]->
-		      case rpc:call(DbaseNode,db_logger,ids,[],3000) of
-			  {badrpc,Reason}->
-			      io:format("{error = ~p~n",[{badrpc,Reason,?MODULE,?FUNCTION_NAME,?LINE}]),
-			      Latest;
-			  []->
-			      io:format("{No Ids = ~p~n",[{?MODULE,?FUNCTION_NAME,?LINE}]),
-			      Latest;
-			  Ids->
-			      OldNew=q_sort:sort(Ids),
-			      XLatest=lists:last(OldNew),
-			      [rpc:cast(DbaseNode,db_logger,nice_print,[Id])||Id<-OldNew,
-									   Id>Latest],
-			      XLatest
+		
+print(Latest)->		
+    {ok,HostName}=net:gethostname(),
+    OamNode=list_to_atom("oam@"++HostName),	   
+ %   io:format("HostName,OamNode ~p~n",[{HostName,OamNode,?MODULE,?FUNCTION_NAME,?LINE}]),
+      Result= case net_adm:ping(OamNode) of
+		pang->
+		      io:format("error ~p~n",[{eexists,OamNode,?MODULE,?FUNCTION_NAME,?LINE}]),
+		    {error,[eexists,OamNode]};
+		pong->
+		      case rpc:call(OamNode,cluster,get_controllers,[],5*1000) of
+			  {Error,Reason}->
+			      {error,[Error,Reason]};
+			  ControllerNodes->
+			      {SdResL,_}=rpc:multicall(ControllerNodes,sd,get,[dbase_infra],5*1000),
+			      case [{Error,Reason}||{Error,Reason}<-lists:append(SdResL)] of
+				  []-> 
+				      DbaseNodes=lists:append(SdResL), % Remove []
+				      {IdsResL,_}=rpc:multicall(DbaseNodes,db_logger,ids,[],5*1000),
+				      case [{Error,Reason}||{Error,Reason}<-lists:append(IdsResL)] of
+					  []-> 
+					      case misc:rm_duplicates(lists:append(IdsResL)) of
+						  []->
+						      {error,[no_ids]}; 
+						  Ids->
+					%	      io:format("{Ids = ~p~n",[{Ids,?MODULE,?FUNCTION_NAME,?LINE}]),
+						      OldNew=q_sort:sort(Ids),
+						      NewLatest=lists:last(OldNew),
+					%	      io:format("{OldNew = ~p~n",[{OldNew,?MODULE,?FUNCTION_NAME,?LINE}]),
+					%	      io:format("{NewLatest = ~p~n",[{NewLatest,?MODULE,?FUNCTION_NAME,?LINE}]),
+						      [DbaseNode|_]=DbaseNodes,
+						      [rpc:cast(DbaseNode,db_logger,nice_print,[Id])||Id<-OldNew,
+												      Id>Latest],
+						      {ok,NewLatest}
+					      end;
+					  Reason ->
+					      {error,[Reason]}
+				      end;
+				  Reason ->
+				      {error,[Reason]}
+			      end
 		      end
-	      end,   
-    receive
-	exit->
-	    ok
-    after 2000->
-	    print(ControllerNode,NewLatest)
-    end.
-
-		     
+	      end,
+    Result.
 %% --------------------------------------------------------------------
 %% Function:tes cases
 %% Description: List of test cases 
