@@ -3,26 +3,20 @@ all:
 	rm -rf ebin/* src/*.beam *.beam test_src/*.beam test_ebin;
 	rm -rf *.applications ~/*.applications *configurations test_src/test_configurations;
 	rm -rf  *~ */*~  erl_cra*;
-#	common
-	erlc -I ../../include -o ebin ../../common/src/*.erl;
-#	sd
-	cp ../sd/src/*.app ebin;
-	erlc -I ../../include -o ebin ../sd/src/*.erl;
 #	app
 	cp src/*.app ebin;
-	erlc -I ../../include -I ../controller/include -I ../dbase_infra/include -o ebin src/*.erl;
+	erlc -I ../log_server/include -I include -o ebin src/*.erl;
 	echo Done
 start:
 	rm -rf ebin/* src/*.beam *.beam test_src/*.beam test_ebin;
 	rm -rf  *~ */*~  erl_cra*;
 #	common
-	erlc -I ../../include -o ebin ../../common/src/*.erl;
+	erlc -I ../log_server/include -o ebin ../../common/src/*.erl;
 #	sd
-	cp ../sd/src/*.app ebin;
-	erlc -I ../../include -o ebin ../sd/src/*.erl;
+	erlc -I ../log_server/include -o ebin ../sd/src/*.erl;
 #	app
 	cp src/*.app ebin;
-	erlc -I ../../include -I ../controller/include -I ../dbase_infra/include -o ebin src/*.erl;
+	erlc -I ../log_server/include -I include -o ebin src/*.erl;
 	erl -pa ebin\
 	    -setcookie cookie_test\
 	    -hidden\

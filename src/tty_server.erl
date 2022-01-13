@@ -10,7 +10,7 @@
 %% --------------------------------------------------------------------
 %% Include files
 %% --------------------------------------------------------------------
-% -include("").
+-include("tty.hrl").
 %% --------------------------------------------------------------------
 -define(PollInterval,5*1000).
 
@@ -41,6 +41,8 @@
 %%          {stop, Reason}
 %% --------------------------------------------------------------------
 init([]) ->
+  
+    
     spawn(fun()-> do_poll() end),
     {ok, #state{status=oam_not_started,
 	       latest=na}
@@ -77,7 +79,7 @@ handle_call(Request, From, State) ->
 handle_cast({print}, State) ->
     NewState=case State#state.status of
 		 oam_not_started->
-		     case rpc:call(node(),terminal,start,[],5*1000) of
+		     case rpc:call(node(),terminal,start,[],10*1000) of
 			 {ok,Latest}->
 			     State#state{status=started,latest=Latest};
 			 {error,Reason}->
@@ -97,6 +99,12 @@ handle_cast({print}, State) ->
     spawn(fun()-> do_poll() end),
     {noreply, NewState};
 
+  
+
+handle_cast({restart}, State) ->
+    [rpc:call(N,os,cmd,["reboot"],1000)||N<-?KubeletNodes],
+    timer:sleep(1000),
+    {noreply, State};
 handle_cast(Msg, State) ->
     io:format("unmatched match cast ~p~n",[{Msg,?MODULE,?LINE,time()}]),
     {noreply, State}.

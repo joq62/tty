@@ -10,8 +10,8 @@
 %% Include files
 %% --------------------------------------------------------------------
 
--include("controller.hrl").
--include("logger_infra.hrl").
+-include("tty.hrl").
+-include("log.hrl").
 %% -------------------------------------------------------------------
 %% External exports
 -export([
@@ -29,93 +29,90 @@
 %% Returns: non
 %% --------------------------------------------------------------------
 start()->
-    {ok,HostName}=net:gethostname(),
-    OamNode=list_to_atom("oam@"++HostName),
-  %  io:format("HostName,OamNode ~p~n",[{HostName,OamNode,?MODULE,?FUNCTION_NAME,?LINE}]),
-    Result= case net_adm:ping(OamNode) of
-		pang->
-		    io:format("error ~p~n",[{eexists,OamNode,?MODULE,?FUNCTION_NAME,?LINE}]),
-		    {error,[eexists,OamNode]};
-		pong->
-		    case rpc:call(OamNode,cluster,get_controllers,[],5*1000) of
-			{Error,Reason}->
-			    {error,[Error,Reason]};
-			ControllerNodes->
-			    {SdResL,_}=rpc:multicall(ControllerNodes,sd,get,[dbase_infra],5*1000),
-			    case [{Error,Reason}||{Error,Reason}<-lists:append(SdResL)] of
-				[]-> 
-				    DbaseNodes=lists:append(SdResL), % Remove []
-				    {IdsResL,_}=rpc:multicall(DbaseNodes,db_logger,ids,[],5*1000),
-				    case [{Error,Reason}||{Error,Reason}<-lists:append(IdsResL)] of
-					[]-> 
-					    case misc:rm_duplicates(lists:append(IdsResL)) of
-						[]->
-						    {error,[no_ids]}; 
-						Ids->
-					%	    io:format("{Ids = ~p~n",[{Ids,?MODULE,?FUNCTION_NAME,?LINE}]),
-						    OldNew=q_sort:sort(Ids),
-						    Latest=lists:last(OldNew),
-					%	    io:format("{OldNew = ~p~n",[{OldNew,?MODULE,?FUNCTION_NAME,?LINE}]),
-					%	    io:format("{Latest = ~p~n",[{Latest,?MODULE,?FUNCTION_NAME,?LINE}]),
-						    [DbaseNode|_]=DbaseNodes,
-						    [rpc:cast(DbaseNode,db_logger,nice_print,[Id])||Id<-OldNew],
-						    {ok,Latest}
-					    end;
-					Reason ->
-					    {error,[Reason]}
-				    end;
-				Reason ->
-				    {error,[Reason]}
-			    end
-		    end
-	    end,
+   % io:format("ping = ~p~n",[{[net_adm:ping(N)||N<-?KubeletNodes],?MODULE,?FUNCTION_NAME,?LINE}]),
+    {IdsResL,BadNodes}=rpc:multicall(?KubeletNodes,log,read_all_info,[],2*1000),
+    %io:format("{IdsResL,BadNodes = ~p~n",[{IdsResL,BadNodes,?MODULE,?FUNCTION_NAME,?LINE}]),
+    Result=case [{Error,Reason}||{Error,Reason}<-lists:append(IdsResL)] of
+	       []-> 
+		   case misc:rm_duplicates(lists:append(IdsResL)) of
+		       []->
+			   {error,[no_ids]}; 
+		       Info->
+						%	    io:format("{Ids = ~p~n",[{Ids,?MODULE,?FUNCTION_NAME,?LINE}]),
+			   OldNew=lists:keysort(1,Info),
+		%	   io:format("{OldNew = ~p~n",[{OldNew,?MODULE,?FUNCTION_NAME,?LINE}]),
+			   {Latest,_SystemTime,_Node,_Severity,_Msg,_Module,_Function,_Line,_Args,_Status}=lists:last(OldNew),
+						%	    io:format("{OldNew = ~p~n",[{OldNew,?MODULE,?FUNCTION_NAME,?LINE}]),
+			   io:format("{Latest = ~p~n",[{Latest,?MODULE,?FUNCTION_NAME,?LINE}]),
+		%	   init:stop(),
+		%	   timer:sleep(2000),
+			   [nice_print_info(Info)||Info<-OldNew],
+			   {ok,Latest}
+		   end;
+	       Reason ->
+		   {error,[Reason]}
+	   end,
     Result.
-		
+	
 print(Latest)->		
-    {ok,HostName}=net:gethostname(),
-    OamNode=list_to_atom("oam@"++HostName),	   
- %   io:format("HostName,OamNode ~p~n",[{HostName,OamNode,?MODULE,?FUNCTION_NAME,?LINE}]),
-      Result= case net_adm:ping(OamNode) of
-		pang->
-		      io:format("error ~p~n",[{eexists,OamNode,?MODULE,?FUNCTION_NAME,?LINE}]),
-		    {error,[eexists,OamNode]};
-		pong->
-		      case rpc:call(OamNode,cluster,get_controllers,[],5*1000) of
-			  {Error,Reason}->
-			      {error,[Error,Reason]};
-			  ControllerNodes->
-			      {SdResL,_}=rpc:multicall(ControllerNodes,sd,get,[dbase_infra],5*1000),
-			      case [{Error,Reason}||{Error,Reason}<-lists:append(SdResL)] of
-				  []-> 
-				      DbaseNodes=lists:append(SdResL), % Remove []
-				      {IdsResL,_}=rpc:multicall(DbaseNodes,db_logger,ids,[],5*1000),
-				      case [{Error,Reason}||{Error,Reason}<-lists:append(IdsResL)] of
-					  []-> 
-					      case misc:rm_duplicates(lists:append(IdsResL)) of
-						  []->
-						      {error,[no_ids]}; 
-						  Ids->
-					%	      io:format("{Ids = ~p~n",[{Ids,?MODULE,?FUNCTION_NAME,?LINE}]),
-						      OldNew=q_sort:sort(Ids),
-						      NewLatest=lists:last(OldNew),
-					%	      io:format("{OldNew = ~p~n",[{OldNew,?MODULE,?FUNCTION_NAME,?LINE}]),
-					%	      io:format("{NewLatest = ~p~n",[{NewLatest,?MODULE,?FUNCTION_NAME,?LINE}]),
-						      [DbaseNode|_]=DbaseNodes,
-						      [rpc:cast(DbaseNode,db_logger,nice_print,[Id])||Id<-OldNew,
-												      Id>Latest],
-						      {ok,NewLatest}
-					      end;
-					  Reason ->
-					      {error,[Reason]}
-				      end;
-				  Reason ->
-				      {error,[Reason]}
-			      end
-		      end
-	      end,
+ %   {IdsResL,_}=rpc:multicall(?KubeletNodes,log,read_all_info,[Latest],5*1000),
+    {IdsResL,_}=rpc:multicall(?KubeletNodes,log,read_all_info,[],5*1000),
+    Result=case [{Error,Reason}||{Error,Reason}<-lists:append(IdsResL)] of
+	       []-> 
+		   case misc:rm_duplicates(lists:append(IdsResL)) of
+		       []->
+			   {error,[no_ids]}; 
+		       Info->
+						%	    io:format("{Ids = ~p~n",[{Ids,?MODULE,?FUNCTION_NAME,?LINE}]),
+			   OldNew=lists:keysort(1,Info),
+		%	   io:format("{OldNew = ~p~n",[{OldNew,?MODULE,?FUNCTION_NAME,?LINE}]),
+			   {NewLatest,_SystemTime,_Node,_Severity,_Msg,_Module,_Function,_Line,_Args,_Status}=lists:last(OldNew),
+						%	    io:format("{OldNew = ~p~n",[{OldNew,?MODULE,?FUNCTION_NAME,?LINE}]),
+					%	    io:format("{Latest = ~p~n",[{Latest,?MODULE,?FUNCTION_NAME,?LINE}]),
+			   [nice_print_info(Info)||Info<-OldNew],
+			   {ok,NewLatest}
+		   end;
+	       Reason ->
+		   {error,[Reason]}
+	   end,
     Result.
+
 %% --------------------------------------------------------------------
 %% Function:tes cases
 %% Description: List of test cases 
 %% Returns: non
 %% --------------------------------------------------------------------
+nice_print_info(Info)->
+    {Id,SystemTime,Node,Severity,Msg,Module,Function,Line,Args,_Status}=Info,
+    Time=calendar:system_time_to_rfc3339(SystemTime,                
+					 [{unit, ?SystemTime}, {time_designator, $\s}, {offset, "Z"}]),
+    
+    Node1=atom_to_list(Node),
+    Severity1=" "++Severity,
+    Module1=atom_to_list(Module),
+    Function1=atom_to_list(Function),
+    Line1=integer_to_list(Line),
+						%Status1=atom_to_list(Status),
+    Msg1=" "++Msg,
+    MF=" "++Module1++":"++Function1,
+    
+	  %  io:format("MF ~p~n",[{Id,?MODULE,?FUNCTION_NAME,?LINE}]),	    
+    io:format("~s ~s ~s ~s",[Time,Severity1,Msg1,MF]),
+    io:format(" ["),
+    nice_print(Args),
+    io:format("] "),
+    io:format("Line=~s Node=~s",[Line1,Node1]),
+    io:format("~n"),
+    ok.
+
+nice_print([])->
+    ok;
+nice_print([Arg|T]) ->
+    io:format("~p",[Arg]),
+    case T of
+	[]->
+	    ok;
+	_ ->
+	    io:format(",")
+    end,
+    print(T).

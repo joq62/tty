@@ -6,7 +6,7 @@
 %% --------------------------------------------------------------------
 %% Include files
 %% --------------------------------------------------------------------
-
+-include("tty.hrl").
 %% --------------------------------------------------------------------
 %% Key Data structures
 %% 
@@ -18,6 +18,7 @@
 -define(SERVER,tty_server).
 %% --------------------------------------------------------------------
 -export([
+	 restart/0,
 	 print/0,
 	 ping/0
 	 
@@ -55,6 +56,10 @@ stop()-> gen_server:call(?SERVER, {stop},infinity).
 %%
 print()-> 
     gen_server:cast(?SERVER, {print}).
+restart()-> 
+    [rpc:call(N,os,cmd,["reboot"],1000)||N<-?KubeletNodes].
+    
+%  gen_server:cast(?SERVER, {restart}).
 
 
 ping()-> 

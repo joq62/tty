@@ -1,0 +1,1 @@
+-define(KubeletNodes,[kubelet@c200,kubelet@c201,kubelet@c202]).
